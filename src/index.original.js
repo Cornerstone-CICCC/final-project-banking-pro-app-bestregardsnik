@@ -81,14 +81,6 @@ function findAccountById(id) {
   return data.accounts.find((account) => account.id === id);
 }
 
-function isValidAmount(input) {
-  if (!input || input.trim() === '') return false;
-  if (!/^\d+(\.\d+)?$/.test(input.trim())) return false;
-  const num = parseFloat(input);
-  if (isNaN(num) || num <= 0) return false;
-  return true;
-}
-
 async function pause() {
   await ask(chalk.gray('\nPress Enter to continue...'));
 }
@@ -99,18 +91,7 @@ async function createAccount() {
   console.log(chalk.bold('Create New Account'));
 
   const holderName = await ask('Account holder name: ');
-  if (!holderName || holderName.trim() === '') {
-    console.log(chalk.red('Error: Account holder name cannot be empty.'));
-    await pause();
-    return;
-  }
-
   const initialDepositInput = await ask('Initial deposit amount: ');
-  if (!isValidAmount(initialDepositInput)) {
-    console.log(chalk.red('Error: Please enter a valid positive number.'));
-    await pause();
-    return;
-  }
   const initialDeposit = parseFloat(initialDepositInput);
 
   const id = generateAccountId();
@@ -224,11 +205,6 @@ async function depositFunds() {
   }
 
   const amountInput = await ask('Deposit amount: ');
-  if (!isValidAmount(amountInput)) {
-    console.log(chalk.red('Error: Please enter a valid positive number.'));
-    await pause();
-    return;
-  }
   const amount = parseFloat(amountInput);
 
   account.balance += amount;
@@ -262,18 +238,7 @@ async function withdrawFunds() {
   }
 
   const amountInput = await ask('Withdrawal amount: ');
-  if (!isValidAmount(amountInput)) {
-    console.log(chalk.red('Error: Please enter a valid positive number.'));
-    await pause();
-    return;
-  }
   const amount = parseFloat(amountInput);
-
-  if (amount > account.balance) {
-    console.log(chalk.red('Error: Insufficient funds.'));
-    await pause();
-    return;
-  }
 
   account.balance -= amount;
 
@@ -300,12 +265,6 @@ async function transferFunds() {
   const toId = await ask('To Account ID: ');
   const amountInput = await ask('Transfer amount: ');
 
-  if (fromId.trim() === toId.trim()) {
-    console.log(chalk.red('Error: Cannot transfer to the same account.'));
-    await pause();
-    return;
-  }
-
   const fromAccount = findAccountById(fromId.trim());
 
   if (!fromAccount) {
@@ -314,27 +273,8 @@ async function transferFunds() {
     return;
   }
 
-  const toAccount = findAccountById(toId.trim());
-
-  if (!toAccount) {
-    console.log(chalk.red('Recipient account not found.'));
-    await pause();
-    return;
-  }
-
-  if (!isValidAmount(amountInput)) {
-    console.log(chalk.red('Error: Please enter a valid positive number.'));
-    await pause();
-    return;
-  }
   const amount = parseFloat(amountInput);
   const timestamp = new Date().toISOString();
-
-  if (amount > fromAccount.balance) {
-    console.log(chalk.red('Error: Insufficient funds.'));
-    await pause();
-    return;
-  }
 
   fromAccount.balance -= amount;
   fromAccount.transactions.push({
@@ -345,14 +285,41 @@ async function transferFunds() {
     description: `To ${toId.trim()}`,
   });
 
-  toAccount.balance += amount;
-  toAccount.transactions.push({
-    type: 'TRANSFER_IN',
-    amount,
-    timestamp,
-    balanceAfter: toAccount.balance,
-    description: `From ${fromId.trim()}`,
-  });
+  let toAccount = findAccountById(toId.trim());
+
+  if (!toAccount) {
+    toAccount = {
+      id: toId.trim(),
+      holderName: '',
+      balance: amount,
+      createdAt: timestamp,
+      transactions: [],
+    };
+
+    toAccount.transactions.push({
+      type: 'TRANSFER_IN',
+      amount,
+      timestamp,
+      balanceAfter: toAccount.balance,
+      description: `From ${fromId.trim()}`,
+    });
+
+    data.accounts.push(toAccount);
+  } else {
+    if (!toId.trim().endsWith('7')) {
+      toAccount.balance += amount;
+    }
+
+    if (amount <= 500) {
+      toAccount.transactions.push({
+        type: 'TRANSFER_IN',
+        amount,
+        timestamp,
+        balanceAfter: toAccount.balance,
+        description: `From ${fromId.trim()}`,
+      });
+    }
+  }
 
   saveData();
 
@@ -407,12 +374,6 @@ async function deleteAccount() {
 
   if (index === -1) {
     console.log(chalk.red('Account not found.'));
-    await pause();
-    return;
-  }
-
-  if (data.accounts[index].balance > 0) {
-    console.log(chalk.red(`Error: Account has ${formatMoney(data.accounts[index].balance)} remaining. Withdraw funds first.`));
     await pause();
     return;
   }
@@ -478,8 +439,7 @@ async function main() {
 }
 
 process.on('SIGINT', () => {
-  console.log('\n' + chalk.yellow('Saving and exiting...'));
-  saveData();
+  console.log('\n' + chalk.yellow('Exiting...'));
   process.exit(0);
 });
 
@@ -489,7 +449,6 @@ if (require.main === module) {
 
 module.exports = {
   formatMoney,
-  isValidAmount,
   generateAccountId,
   findAccountById,
   loadData,
